@@ -1,22 +1,18 @@
-개발framework :
-SpringBoot2
-Gradle
-JAVA
-JPA
-Lombok
-H2 DB
+개발 framework :
+SpringBoot2, Gradle, JAVA, JPA, Lombok, H2 DB
 
-테이블은 결제정보가 저장되는 PAYMENT, 취소정보가 저장되는 CANCELLATION 두개로 만들었으며
-취소정보는 PAYMENT_UID 를 FK 로하여 결제정보와 join 됩니다.
-JPA+Lombok 을 이용하여  Entity 를 생성하였습니다.
-
-src/main/java/com/rest/api/Applications.java 로 서버를 실행하면 됩니다.
+github에서 clone하고, gradle project 로 import 한후 lombok 세팅만 해주면 빌드됩니다.
+src/main/java/com/rest/api/Applications.java 로 서버실행
 
 http://localhost:8080/swagger-ui.html 를 통해 API문서에 접근 가능합니다.
 payment-controller 선택
 /v1/DoPayment : 결제API
 /v1/CancelPayment : 취소API
 /v1/GetPayment/{uid} : 조회API
+
+테이블은 결제정보가 저장되는 PAYMENT, 취소정보가 저장되는 CANCELLATION 두개로 만들었으며
+취소정보는 PAYMENT_UID 를 FK 로하여 결제정보와 join 됩니다.
+JPA+Lombok 을 이용하여  Entity 를 생성하였습니다.
 
 src/main/java/com/rest/api/controller/v1/PaymentController.java
 에서 위 세가지 API를 모두 구현하였습니다.
