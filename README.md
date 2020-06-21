@@ -1,5 +1,7 @@
+개발언어 : JAVA, DB : H2
+
 개발 framework :
-SpringBoot2, Gradle, JAVA, JPA, Lombok, H2 DB
+SpringBoot2, Gradle, JPA, Lombok
 
 github에서 clone하고, gradle project 로 import 한후 lombok 세팅만 해주면 빌드됩니다.
 src/main/java/com/rest/api/Applications.java 로 서버실행
