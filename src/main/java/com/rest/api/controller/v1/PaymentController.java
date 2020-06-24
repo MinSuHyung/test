@@ -131,7 +131,7 @@ public class PaymentController {
         PaymentResultDTO paymentResultDTO = null;
         ResponseService.CommonResponse msgCode = ResponseService.CommonResponse.FAIL;
 
-
+        LocalDateTime date = LocalDateTime.now();
 
         try {
             //input check
@@ -163,18 +163,26 @@ public class PaymentController {
                 //결제금액(100원이상, 10억원 이하, 숫자)
                 msgCode = ResponseService.CommonResponse.CHK_PAYAMT;
             } else {
-                LocalDateTime date = LocalDateTime.now();
-                LocalDateTime hashDate = hash.get("P"+cardNum);
 
-                //5초이내 입력된 내용이 있으면 중복처리
-                if(hashDate != null && hashDate.isAfter(date.minusSeconds(5))) {
+                LocalDateTime hashDate = hash.get("P"+cardNum);
+                LocalDateTime hashEndDate = hash.get("E"+cardNum);
+
+                //5초이내 입력된 내용이 있거나 시작Key는 있되 종료Key가 없으면 실행중으로 보고 중복처리
+                if( (hashDate != null && hashDate.isAfter(date.minusSeconds(5)))
+                        || (hashDate != null && hashEndDate == null) ) {
                     msgCode = ResponseService.CommonResponse.DUPLICATE;
                 } else {
-                    //기존번호 지우고 입력
+                    //시작Key는 삭제후 입력
                     if(hashDate != null) {
                         hash.remove("P"+cardNum);
                     }
                     hash.put("P"+cardNum,date);
+
+                    //종료Key 있으면 삭제
+                    if(hashEndDate != null) {
+                        hash.remove("E"+cardNum);
+                    }
+
 
                     //부가세 계산
                     if(vatAmount == null) {
@@ -232,6 +240,8 @@ public class PaymentController {
             e.printStackTrace();
             msgCode = ResponseService.CommonResponse.FAIL;
         } finally {
+            //종료Key 입력
+            hash.put("E"+cardNum,date);
             return responseService.getSingleResult(paymentResultDTO, msgCode);
         }
 
@@ -257,6 +267,7 @@ public class PaymentController {
         int balPayAmount = 0;
         int balVatAmount = 0;
         boolean calcVatYN = false;
+        LocalDateTime date = LocalDateTime.now();
 
         ResponseService.CommonResponse msgCode = ResponseService.CommonResponse.FAIL;
         try {
@@ -269,18 +280,26 @@ public class PaymentController {
             if (payment == null) {
                 msgCode = ResponseService.CommonResponse.NO_EXIST;
             } else {
-                LocalDateTime date = LocalDateTime.now();
 
-                //5초이내 입력된 내용이 있으면 중복처리
-                LocalDateTime hashDate = hash.get(paymentUid);
-                if(hashDate != null && hashDate.isAfter(date.minusSeconds(5))) {
+                LocalDateTime hashDate = hash.get("P"+paymentUid);
+                LocalDateTime hashEndDate = hash.get("E"+paymentUid);
+
+                //5초이내 입력된 내용이 있거나 시작Key는 있되 종료Key가 없으면 실행중으로 보고 중복처리
+                if( (hashDate != null && hashDate.isAfter(date.minusSeconds(5)))
+                        || (hashDate != null && hashEndDate == null) ) {
                     msgCode = ResponseService.CommonResponse.DUPLICATE;
                 } else {
-                    //기존번호 지우고 입력
-                    if (hashDate != null) {
-                        hash.remove(paymentUid);
+                    //시작Key는 삭제후 입력
+                    if(hashDate != null) {
+                        hash.remove("P"+paymentUid);
                     }
-                    hash.put(paymentUid, date);
+                    hash.put("P"+paymentUid,date);
+
+                    //종료Key 있으면 삭제
+                    if(hashEndDate != null) {
+                        hash.remove("E"+paymentUid);
+                    }
+
 
                     //기취소금액 구하기
                     if (payment.getCancellations() != null && payment.getCancellations().size() > 0) {
@@ -361,6 +380,8 @@ public class PaymentController {
             e.printStackTrace();
             msgCode = ResponseService.CommonResponse.FAIL;
         } finally {
+            //종료Key 입력
+            hash.put("E"+paymentUid,date);
             return responseService.getSingleResult(paymentResultDTO, msgCode);
         }
 

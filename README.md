@@ -1,6 +1,6 @@
 개발언어 : JAVA, DB : H2
 
-개발 framework :
+개발환경 :
 SpringBoot2, Gradle, JPA, Lombok
 
 github에서 clone하고, gradle project 로 import 한후 lombok 세팅만 해주면 빌드됩니다.
@@ -31,6 +31,11 @@ DB와 인터페이스는 최대한 JPA repository 를 이용하였습니다.
 리턴하는 결과값은 ResultDTO 클래스들을 만들어 사용하였습니다.
 
 리턴하는 메세지들은 인터넷에 구현되어있는 ResponseService 클래스를 참고하여 수정해서 만들었습니다.
+
+중복호출을 방지하기 위해 전역MAP을 사용하여 체크하였으며, 첫 호출 이후 5초이내 동일번호 호출은 모두 중복처리 하였습니다.
+
+하나의 처리가 5초가 넘어가는 경우를 대비해서 종료시에 종료키를 추가하여 5초가 지났더라도 종료가 되었는지 다시 체크하도록 했습니다.
+
 
 전체적인 framework 세팅은  
 https://daddyprogrammer.org/post/1212/springboot2-create-by-spring-initializr/
