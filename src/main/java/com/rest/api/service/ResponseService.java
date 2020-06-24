@@ -13,6 +13,7 @@ public class ResponseService {
     public enum CommonResponse {
         SUCCESS(0, "성공하였습니다."),
         FAIL(-1, "실패하였습니다."),
+        DUPLICATE(-10, "중복호출입니다."),
         NO_EXIST(-2, "결제내역이 존재하지 않습니다."),
         CHK_CARDNUM(-3,"카드번호는(10~16자리 숫자)입니다."),
         CHK_VALIDPERIOD(-4,"유효기간은(4자리숫자,mmyy)입니다."),

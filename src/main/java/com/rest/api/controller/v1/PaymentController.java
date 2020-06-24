@@ -2,7 +2,6 @@ package com.rest.api.controller.v1;
 
 import com.rest.api.entity.*;
 import com.rest.api.model.response.SingleResult;
-import com.rest.api.model.response.CommonResult;
 import com.rest.api.repo.CancellationJpaRepo;
 import com.rest.api.repo.PaymentJpaRepo;
 import com.rest.api.service.ResponseService;
@@ -11,11 +10,14 @@ import com.rest.api.utils.crypto;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.rest.api.utils.commonUtils.isOnlyDigit;
 
@@ -28,7 +30,7 @@ public class PaymentController {
     private final CancellationJpaRepo CancellationJpaRepo;
     private final ResponseService responseService;
     String Key = "Secret Key";
-
+    Map<String, LocalDateTime> hash = new HashMap<>();
 
     @ApiOperation(value = "결제조회", notes = "UId로 결제정보를 조회한다")
     @GetMapping(value = "/GetPayment/{uid}")
@@ -72,13 +74,9 @@ public class PaymentController {
                 }
 
                 decCardInfo = crypto.decryptAES256(payment.getCardInfo(), Key);
-                System.out.println(decCardInfo);
                 if (decCardInfo != null) {
                     splitCardInfo = decCardInfo.split("\\|");
                 }
-                System.out.println(splitCardInfo[0]);
-                System.out.println(splitCardInfo[1]);
-                System.out.println(splitCardInfo[2]);
 
                 String maskingString = new String(new char[splitCardInfo[0].length()-9]).replace("\0","*");
                 maskedCardNum = splitCardInfo[0].substring(0,6)+maskingString+splitCardInfo[0].substring(splitCardInfo[0].length()-3);
@@ -116,6 +114,7 @@ public class PaymentController {
 
     }
 
+    @Transactional
     @ApiOperation(value = "결제API", notes = "카드결제정보를 전송한다.")
     @PostMapping(value = "/DoPayment")
     public SingleResult<PaymentResultDTO> save(
@@ -131,6 +130,8 @@ public class PaymentController {
         String transData = "";
         PaymentResultDTO paymentResultDTO = null;
         ResponseService.CommonResponse msgCode = ResponseService.CommonResponse.FAIL;
+
+
 
         try {
             //input check
@@ -162,57 +163,70 @@ public class PaymentController {
                 //결제금액(100원이상, 10억원 이하, 숫자)
                 msgCode = ResponseService.CommonResponse.CHK_PAYAMT;
             } else {
-                //부가세 계산
-                if(vatAmount == null) {
-                    vatAmount = Math.toIntExact(Math.round(paymentAmount / 11.0));
-                }
-                System.out.println(vatAmount);
-
-                //필요 object 생성
-                CardInfo cardInfo = CardInfo.builder().cardNum(cardNum).validPeriod(validPeriod).cvc(cvc).build();
-                AmountInfo amountInfo = AmountInfo.builder().paymentAmount(paymentAmount).vatAmount(vatAmount).build();
-
-                //카드정보 암호화
-                encCardInfo = crypto.encryptAES256(cardNum+"|"+validPeriod+"|"+cvc, Key);
-                System.out.println(encCardInfo);
-
-                //unique ID 생성 ( payment uid 는 P로 시작 )
-                currentID = "P"+commonUtils.getCurrentDateId();
-                System.out.println(currentID);
-
-                //카드사 전송데이터 생성
-                //body정보생성
-                transData = commonUtils.makeTransData(cardInfo, installment, amountInfo, currentID, encCardInfo);
-                System.out.println(transData);
-                //header정보추가
-                transData = commonUtils.makeStringByType("446",1,4)
-                        + commonUtils.makeStringByType("PAYMENT",4,10)
-                        + commonUtils.makeStringByType(currentID,4,20)
-                        + transData;
-                System.out.println(transData);
-
-                //결제정보저장
                 LocalDateTime date = LocalDateTime.now();
-                Payment payment = Payment.builder()
-                        .uid(currentID)
-                        .cardInfo(encCardInfo)
-                        .installment(installment)
-                        .paymentAmount(paymentAmount)
-                        .vatAmount(vatAmount)
-                        .transData(transData)
-                        .createdAt(date)
-                        .build();
-                paymentJpaRepo.save(payment);
+                LocalDateTime hashDate = hash.get("P"+cardNum);
 
-                //리턴할정보생성
-                paymentResultDTO = PaymentResultDTO.builder()
-                        .uId(currentID)
-                        .transData(transData)
-                        .build();
-                msgCode = ResponseService.CommonResponse.SUCCESS;
+                //5초이내 입력된 내용이 있으면 중복처리
+                if(hashDate != null && hashDate.isAfter(date.minusSeconds(5))) {
+                    msgCode = ResponseService.CommonResponse.DUPLICATE;
+                } else {
+                    //기존번호 지우고 입력
+                    if(hashDate != null) {
+                        hash.remove("P"+cardNum);
+                    }
+                    hash.put("P"+cardNum,date);
+
+                    //부가세 계산
+                    if(vatAmount == null) {
+                        vatAmount = Math.toIntExact(Math.round(paymentAmount / 11.0));
+                    }
+
+                    //필요 object 생성
+                    CardInfo cardInfo = CardInfo.builder().cardNum(cardNum).validPeriod(validPeriod).cvc(cvc).build();
+                    AmountInfo amountInfo = AmountInfo.builder().paymentAmount(paymentAmount).vatAmount(vatAmount).build();
+
+                    //카드정보 암호화
+                    encCardInfo = crypto.encryptAES256(cardNum+"|"+validPeriod+"|"+cvc, Key);
+                    //System.out.println(encCardInfo);
+
+                    //unique ID 생성 ( payment uid 는 P로 시작 )
+                    currentID = "P"+commonUtils.getCurrentDateId();
+                    //System.out.println(currentID);
+
+                    //카드사 전송데이터 생성
+                    //body정보생성
+                    transData = commonUtils.makeTransData(cardInfo, installment, amountInfo, currentID, encCardInfo);
+                    //System.out.println(transData);
+                    //header정보추가
+                    transData = commonUtils.makeStringByType("446",1,4)
+                            + commonUtils.makeStringByType("PAYMENT",4,10)
+                            + commonUtils.makeStringByType(currentID,4,20)
+                            + transData;
+                    //System.out.println(transData);
+
+                    //결제정보저장
+                    Payment payment = Payment.builder()
+                            .uid(currentID)
+                            .cardInfo(encCardInfo)
+                            .installment(installment)
+                            .paymentAmount(paymentAmount)
+                            .vatAmount(vatAmount)
+                            .transData(transData)
+                            .createdAt(date)
+                            .build();
+                    paymentJpaRepo.save(payment);
+
+                    //리턴할정보생성
+                    paymentResultDTO = PaymentResultDTO.builder()
+                            .uId(currentID)
+                            .transData(transData)
+                            .build();
+
+                    msgCode = ResponseService.CommonResponse.SUCCESS;
+
+                }
+
             }
-
-
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -255,82 +269,94 @@ public class PaymentController {
             if (payment == null) {
                 msgCode = ResponseService.CommonResponse.NO_EXIST;
             } else {
-                //기취소금액 구하기
-                if (payment.getCancellations() != null && payment.getCancellations().size() > 0) {
-                    for (int i = 0; i < payment.getCancellations().size(); i++) {
-                        cancellationSumAmount = cancellationSumAmount + payment.getCancellations().get(i).getCancellationAmount();
-                        cancellationVatSumAmount = cancellationVatSumAmount + payment.getCancellations().get(i).getVatAmount();
-                    }
-                }
-                //부가세 계산
-                if(vatAmount == null) {
-                    vatAmount = Math.toIntExact(Math.round(cancellationAmount / 11.0));
-                    calcVatYN = true;
-                }
-                balPayAmount = payment.getPaymentAmount() - cancellationSumAmount;
-                balVatAmount = payment.getVatAmount() - cancellationVatSumAmount;
+                LocalDateTime date = LocalDateTime.now();
 
-                //부가세 짜투리 금액 조절
-                //천원은 부가세가 없을 수 있으므로, 자동계산되는 부가세에 대해서는 천원에 대한 부가세 91원까지는 보정함
-                //결제원금이 0원이 되고 계산되는 부가세이면서 0~91원 과다계산되는 부가세에 대해서 조절
-                if ( balPayAmount - cancellationAmount == 0 && calcVatYN && balVatAmount-vatAmount >= -91 && balVatAmount-vatAmount < 0 ) {
-                    vatAmount = balVatAmount;
-                }
-
-                //취소금액 확인
-                if ( balPayAmount - cancellationAmount < 0 ) {
-                    msgCode = ResponseService.CommonResponse.CHK_CANAMT;
-                } else if ( balVatAmount - vatAmount < 0 ) {
-                    msgCode = ResponseService.CommonResponse.CHK_CANVATAMT;
-                } else if ( balPayAmount - cancellationAmount < balVatAmount - vatAmount ) {
-                    msgCode = ResponseService.CommonResponse.CHK_CANBALVATAMT;
+                //5초이내 입력된 내용이 있으면 중복처리
+                LocalDateTime hashDate = hash.get(paymentUid);
+                if(hashDate != null && hashDate.isAfter(date.minusSeconds(5))) {
+                    msgCode = ResponseService.CommonResponse.DUPLICATE;
                 } else {
-                    decCardInfo = crypto.decryptAES256(payment.getCardInfo(), Key);
+                    //기존번호 지우고 입력
+                    if (hashDate != null) {
+                        hash.remove(paymentUid);
+                    }
+                    hash.put(paymentUid, date);
 
-                    if (decCardInfo != null) {
-                        splitCardInfo = decCardInfo.split("\\|");
+                    //기취소금액 구하기
+                    if (payment.getCancellations() != null && payment.getCancellations().size() > 0) {
+                        for (int i = 0; i < payment.getCancellations().size(); i++) {
+                            cancellationSumAmount = cancellationSumAmount + payment.getCancellations().get(i).getCancellationAmount();
+                            cancellationVatSumAmount = cancellationVatSumAmount + payment.getCancellations().get(i).getVatAmount();
+                        }
+                    }
+                    //부가세 계산
+                    if(vatAmount == null) {
+                        vatAmount = Math.toIntExact(Math.round(cancellationAmount / 11.0));
+                        calcVatYN = true;
+                    }
+                    balPayAmount = payment.getPaymentAmount() - cancellationSumAmount;
+                    balVatAmount = payment.getVatAmount() - cancellationVatSumAmount;
+
+                    //부가세 짜투리 금액 조절
+                    //천원은 부가세가 없을 수 있으므로, 자동계산되는 부가세에 대해서는 천원에 대한 부가세 91원까지는 보정함
+                    //결제원금이 0원이 되고 계산되는 부가세이면서 0~91원 과다계산되는 부가세에 대해서 조절
+                    if ( balPayAmount - cancellationAmount == 0 && calcVatYN && balVatAmount-vatAmount >= -91 && balVatAmount-vatAmount < 0 ) {
+                        vatAmount = balVatAmount;
                     }
 
-                    //필요 object 생성
-                    CardInfo cardInfo = CardInfo.builder().cardNum(splitCardInfo[0]).validPeriod(splitCardInfo[1]).cvc(splitCardInfo[2]).build();
-                    AmountInfo cancelAmountInfo = AmountInfo.builder().paymentAmount(cancellationAmount).vatAmount(vatAmount).build();
+                    //취소금액 확인
+                    if ( balPayAmount - cancellationAmount < 0 ) {
+                        msgCode = ResponseService.CommonResponse.CHK_CANAMT;
+                    } else if ( balVatAmount - vatAmount < 0 ) {
+                        msgCode = ResponseService.CommonResponse.CHK_CANVATAMT;
+                    } else if ( balPayAmount - cancellationAmount < balVatAmount - vatAmount ) {
+                        msgCode = ResponseService.CommonResponse.CHK_CANBALVATAMT;
+                    } else {
+                        decCardInfo = crypto.decryptAES256(payment.getCardInfo(), Key);
 
-                    //unique ID 생성 ( 취소 uid 는 C로 시작 )
-                    currentID = "C"+commonUtils.getCurrentDateId();
-                    System.out.println(currentID);
+                        if (decCardInfo != null) {
+                            splitCardInfo = decCardInfo.split("\\|");
+                        }
 
-                    //카드사 전송데이터 생성
-                    //body정보생성
-                    transData = commonUtils.makeTransData(cardInfo, installment, cancelAmountInfo, currentID, payment.getCardInfo());
-                    System.out.println(transData);
-                    //header정보추가
-                    transData = commonUtils.makeStringByType("446",1,4)
-                            + commonUtils.makeStringByType("CANCEL",4,10)
-                            + commonUtils.makeStringByType(currentID,4,20)
-                            + transData;
-                    System.out.println(transData);
+                        //필요 object 생성
+                        CardInfo cardInfo = CardInfo.builder().cardNum(splitCardInfo[0]).validPeriod(splitCardInfo[1]).cvc(splitCardInfo[2]).build();
+                        AmountInfo cancelAmountInfo = AmountInfo.builder().paymentAmount(cancellationAmount).vatAmount(vatAmount).build();
 
-                    //취소정보저장
-                    LocalDateTime date = LocalDateTime.now();
-                    Cancellation cancellationInsert = Cancellation.builder()
-                            .uid(currentID)
-                            .cancellationAmount(cancellationAmount)
-                            .vatAmount(vatAmount)
-                            .transData(transData)
-                            .paymentUid(paymentUid)
-                            .createdAt(date)
-                            .build();
-                    CancellationJpaRepo.save(cancellationInsert);
+                        //unique ID 생성 ( 취소 uid 는 C로 시작 )
+                        currentID = "C"+commonUtils.getCurrentDateId();
+                        //System.out.println(currentID);
 
-                    //리턴할정보생성(결제정보와 같은 response 사용)
-                    paymentResultDTO = PaymentResultDTO.builder()
-                            .uId(currentID)
-                            .transData(transData)
-                            .build();
-                    msgCode = ResponseService.CommonResponse.SUCCESS;
+                        //카드사 전송데이터 생성
+                        //body정보생성
+                        transData = commonUtils.makeTransData(cardInfo, installment, cancelAmountInfo, currentID, payment.getCardInfo());
+                        //System.out.println(transData);
+                        //header정보추가
+                        transData = commonUtils.makeStringByType("446",1,4)
+                                + commonUtils.makeStringByType("CANCEL",4,10)
+                                + commonUtils.makeStringByType(currentID,4,20)
+                                + transData;
+                        //System.out.println(transData);
+
+                        //취소정보저장
+                        Cancellation cancellationInsert = Cancellation.builder()
+                                .uid(currentID)
+                                .cancellationAmount(cancellationAmount)
+                                .vatAmount(vatAmount)
+                                .transData(transData)
+                                .paymentUid(paymentUid)
+                                .createdAt(date)
+                                .build();
+                        CancellationJpaRepo.save(cancellationInsert);
+
+                        //리턴할정보생성(결제정보와 같은 response 사용)
+                        paymentResultDTO = PaymentResultDTO.builder()
+                                .uId(currentID)
+                                .transData(transData)
+                                .build();
+                        msgCode = ResponseService.CommonResponse.SUCCESS;
+                    }
                 }
             }
-
         } catch (Exception e) {
             e.printStackTrace();
             msgCode = ResponseService.CommonResponse.FAIL;
