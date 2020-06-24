@@ -29,8 +29,8 @@ public class PaymentController {
     private final PaymentJpaRepo paymentJpaRepo;
     private final CancellationJpaRepo CancellationJpaRepo;
     private final ResponseService responseService;
-    String Key = "Secret Key";
-    Map<String, LocalDateTime> hash = new HashMap<>();
+    private final String Key = "Secret Key";
+    private Map<String, LocalDateTime> hash = new HashMap<>();
 
     @ApiOperation(value = "결제조회", notes = "UId로 결제정보를 조회한다")
     @GetMapping(value = "/GetPayment/{uid}")
