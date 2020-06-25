@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 
@@ -30,7 +30,7 @@ public class PaymentController {
     private final CancellationJpaRepo CancellationJpaRepo;
     private final ResponseService responseService;
     private final String Key = "Secret Key";
-    private Map<String, LocalDateTime> hash = new HashMap<>();
+    private Map<String, LocalDateTime> hash = new Hashtable<>();
 
     @ApiOperation(value = "결제조회", notes = "UId로 결제정보를 조회한다")
     @GetMapping(value = "/GetPayment/{uid}")
